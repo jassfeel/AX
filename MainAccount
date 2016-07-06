@@ -1,0 +1,50 @@
+edit Suspended HST_isSuspended(boolean set, Suspended _isSuspended)
+{
+
+    DimensionAttributeValue             dimAttrValue;
+    DimensionAttribute                  mainAccountDimAttribute;
+    DimensionAttrValueLedgerOverride    dimensionAttrValueLedgerOverride;
+    Ledger                              currentledger;
+    Suspended                           isMainAccountSuspended;
+    #ISOCountryRegionCodes
+
+    mainAccountDimAttribute.RecId = DimensionAttribute::getMainAccountDimensionAttribute();
+
+    if (set)
+    {
+        dimAttrValue = DimensionAttributeValue::findByDimensionAttributeAndEntityInst(mainAccountDimAttribute.RecId, mainAccount.RecId, true, true);
+        
+        if (_isSuspended == NoYes::Yes)
+        {
+            if ((SysCountryRegionCode::isLegalEntityInCountryRegion([#isoMX]) && !InfAdjValidation_MX::isMainAccountClosed(_isSuspended, MainAccount::find(dimAttrValue.EntityInstance).InflationAdjustment_MX)))
+            {
+                return false;
+            }
+            // Suspend this main account for all ledgers
+            update_recordset dimensionAttrValueLedgerOverride
+                setting IsSuspended = NoYes::Yes
+                    where dimensionAttrValueLedgerOverride.DimensionAttributeValue == dimAttrValue.RecId;
+        }
+        else
+        {
+            // Activate this main account for all ledgers for which IsSuspendedOverriddenByUser = No
+            update_recordset dimensionAttrValueLedgerOverride
+                setting IsSuspended = NoYes::No
+                    where dimensionAttrValueLedgerOverride.DimensionAttributeValue == dimAttrValue.RecId &&
+                        dimensionAttrValueLedgerOverride.IsSuspendedOverriddenByUser == NoYes::No;
+        }
+
+        dimAttrValue.IsSuspended = _isSuspended;
+        dimAttrValue.update();
+        dimensionAttributeValue_ds.research(true);
+    }
+    else
+    {
+        dimAttrValue = DimensionAttributeValue::findByDimensionAttributeAndEntityInst(mainAccountDimAttribute.RecId, mainAccount.RecId, true);
+    }
+
+    administration_IsSuspended.enabled(mainAccount.Type != DimensionLedgerAccountType::Total);
+    isMainAccountSuspended = dimAttrValue.IsSuspended;
+
+    return isMainAccountSuspended;
+}
